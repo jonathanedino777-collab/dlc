@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { LGAS, INITIAL_TEAMS, MONTHS } from '../constants';
 import { LGA, WeeklyReport } from '../types';
 import { firestoreService } from '../services/firebase';
+import { storageService } from '../services/storageService';
 
 interface ReportFormProps {
   reports: WeeklyReport[];
@@ -42,15 +43,26 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
     };
 
     try {
+      // 1. Attempt Cloud Save
       await firestoreService.saveReport(reportData);
-      setIsSubmitting(false);
       setSubmitted(true);
+    } catch (err: any) {
+      console.error("Cloud Submission Failed:", err);
+      
+      // 2. Fallback: Save Locally if cloud fails
+      const localReport: WeeklyReport = {
+        ...reportData,
+        id: `local_${Date.now()}`,
+        submittedAt: new Date().toISOString(),
+      };
+      storageService.saveReport(localReport);
+      
+      setErrorMsg("Sync Pending: Your report is saved locally on this device.");
+      setSubmitted(true); // Still show success UI but with the warning
+    } finally {
+      setIsSubmitting(false);
       setScore(0);
       setTimeout(() => setSubmitted(false), 5000);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Cloud sync failed. Check internet or database rules.");
-      setIsSubmitting(false);
     }
   };
 
@@ -63,25 +75,13 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
         </h2>
         
         {submitted && (
-          <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-2xl flex items-center gap-3 animate-fadeIn border border-green-100">
-            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+          <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn border ${errorMsg ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-green-50 text-green-700 border-green-100'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${errorMsg ? 'bg-orange-500' : 'bg-green-500'}`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
             </div>
             <div className="flex-1">
-              <p className="font-bold text-sm">Report Synced Successfully!</p>
-              <p className="text-xs opacity-80">Visible to state administrators immediately.</p>
-            </div>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl flex items-center gap-3 animate-slideDown border border-red-100">
-            <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-            <div className="flex-1">
-              <p className="font-bold text-sm">Sync Failure</p>
-              <p className="text-[10px] leading-tight opacity-90">{errorMsg}</p>
+              <p className="font-bold text-sm">{errorMsg ? 'Saved Locally' : 'Report Synced Successfully!'}</p>
+              <p className="text-[10px] opacity-80 leading-tight">{errorMsg || 'Visible to state administrators immediately.'}</p>
             </div>
           </div>
         )}
@@ -197,7 +197,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
         <div className="p-6 bg-gray-900 rounded-3xl shadow-2xl text-white">
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-400 mb-4 flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
-            Recent Submissions
+            My Device History
           </h3>
           <div className="space-y-3">
             {myRecentReports.map(r => (

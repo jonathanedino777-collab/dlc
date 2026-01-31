@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApp, getApps } from "firebase/app";
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { WeeklyReport } from "../types";
 
@@ -12,7 +12,8 @@ const firebaseConfig = {
   measurementId: "G-PCTDFZYEK5"
 };
 
-const app = initializeApp(firebaseConfig);
+// Singleton pattern for Firebase initialization
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app);
 
 const REPORTS_COLLECTION = 'reports';
@@ -35,20 +36,26 @@ export const firestoreService = {
   },
 
   subscribeToReports: (callback: (reports: WeeklyReport[]) => void, errorCallback?: (error: any) => void) => {
-    const q = query(collection(db, REPORTS_COLLECTION), orderBy('submittedAt', 'desc'));
-    return onSnapshot(
-      q, 
-      (querySnapshot) => {
-        const reports: WeeklyReport[] = [];
-        querySnapshot.forEach((doc) => {
-          reports.push({ id: doc.id, ...doc.data() } as WeeklyReport);
-        });
-        callback(reports);
-      },
-      (error) => {
-        if (errorCallback) errorCallback(error);
-      }
-    );
+    try {
+      const q = query(collection(db, REPORTS_COLLECTION), orderBy('submittedAt', 'desc'));
+      return onSnapshot(
+        q, 
+        (querySnapshot) => {
+          const reports: WeeklyReport[] = [];
+          querySnapshot.forEach((doc) => {
+            reports.push({ id: doc.id, ...doc.data() } as WeeklyReport);
+          });
+          callback(reports);
+        },
+        (error) => {
+          if (errorCallback) errorCallback(error);
+        }
+      );
+    } catch (e) {
+      console.error("Subscription setup failed:", e);
+      if (errorCallback) errorCallback(e);
+      return () => {}; // Return dummy unsubscribe
+    }
   },
 
   deleteReport: async (id: string) => {

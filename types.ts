@@ -1,5 +1,4 @@
-
-export type LGA = 'BATAGARAWA' | 'KATSINA' | 'DAURA' | 'MALUMFASHI' | 'KANKIA';
+export type LGA = 'BATAGARAWA' | 'KATSINA' | 'DAURA' | 'MALUMFASHI' | 'KANKIA' | 'MANI' | 'MATAZU' | 'MAIADUA';
 
 export interface TeamMember {
   name: string;

@@ -2,32 +2,56 @@ import React, { useState, useEffect } from 'react';
 import { ReportForm } from './components/ReportForm';
 import { AdminDashboard } from './components/AdminDashboard';
 import { firestoreService } from './services/firebase';
+import { storageService } from './services/storageService';
 import { WeeklyReport } from './types';
+
+type CloudStatus = 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'CONNECTING';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'REPORT' | 'ADMIN'>('REPORT');
   const [reports, setReports] = useState<WeeklyReport[]>([]);
-  const [cloudStatus, setCloudStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>('DISCONNECTED');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // Subscribe to real-time updates from Firestore
+    // Initial load from local storage cache
+    const cached = storageService.getReports();
+    setReports(cached);
+
+    setCloudStatus('CONNECTING');
+    
     const unsubscribe = firestoreService.subscribeToReports(
       (updatedReports) => {
         setReports(updatedReports);
         setCloudStatus('CONNECTED');
+        setErrorMessage(null);
+        // Sync local cache with cloud
+        storageService.saveAllReports(updatedReports);
       },
-      (error) => {
-        console.error("Firestore subscription error:", error);
+      (error: any) => {
+        console.error("Cloud Access Error:", error);
         setCloudStatus('ERROR');
+        
+        if (error.code === 'permission-denied' || error.message?.includes('permission')) {
+          setErrorMessage("Cloud sync is currently unavailable. Displaying local data.");
+        } else {
+          setErrorMessage("Connection issue. Showing cached data from your device.");
+        }
       }
     );
 
     return () => unsubscribe();
   }, []);
 
+  const statusColors = {
+    CONNECTED: 'bg-green-500 shadow-green-500/50',
+    CONNECTING: 'bg-yellow-400 shadow-yellow-400/50',
+    ERROR: 'bg-red-500 shadow-red-500/50',
+    DISCONNECTED: 'bg-gray-300'
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Sticky Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -39,66 +63,42 @@ const App: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-extrabold text-gray-900 tracking-tight leading-none">DL4ALL</h1>
-                <span className={`flex h-2 w-2 rounded-full shadow-lg ${
-                  cloudStatus === 'CONNECTED' ? 'bg-green-500 shadow-green-500/50' : 
-                  cloudStatus === 'ERROR' ? 'bg-red-500 shadow-red-500/50' : 'bg-gray-300'
-                }`} title={cloudStatus}></span>
+                <span className={`flex h-2.5 w-2.5 rounded-full shadow-lg transition-all duration-700 ${statusColors[cloudStatus]}`} title={`Status: ${cloudStatus}`}></span>
               </div>
               <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">KATSINA STATE DLCs</p>
             </div>
           </div>
 
           <nav className="flex bg-gray-100 p-1 rounded-xl">
-            <button 
-              onClick={() => setView('REPORT')}
-              className={`px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                view === 'REPORT' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Reporting
-            </button>
-            <button 
-              onClick={() => setView('ADMIN')}
-              className={`px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                view === 'ADMIN' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Admin Panel
-            </button>
+            <button onClick={() => setView('REPORT')} className={`px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${view === 'REPORT' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Reporting</button>
+            <button onClick={() => setView('ADMIN')} className={`px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${view === 'ADMIN' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Admin Panel</button>
           </nav>
         </div>
       </header>
 
-      {/* Connection Error Banner */}
-      {cloudStatus === 'ERROR' && (
-        <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 text-center tracking-widest">
-          Cloud sync blocked by Firestore rules. Update rules in Firebase Console.
+      {/* Subtle Error Toast if any */}
+      {errorMessage && cloudStatus === 'ERROR' && (
+        <div className="bg-gray-900 text-white text-[10px] py-1.5 px-4 text-center font-bold tracking-wider animate-fadeIn">
+          {errorMessage.toUpperCase()}
         </div>
       )}
 
-      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
         <div className="mb-8 text-center">
           <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-            {view === 'REPORT' ? 'LGA Team Leader Report' : 'Performance Analytics'}
+            {view === 'REPORT' ? 'Team Leader Report Portal' : 'State Performance Dashboard'}
           </h2>
           <p className="text-sm sm:text-base text-gray-500 max-w-2xl mx-auto px-4">
-            {view === 'REPORT' 
-              ? 'Submit your weekly progress report. All submissions are synced globally in real-time.'
-              : 'Monitor DLC performance metrics and team leaderboard synced across the state.'}
+            {view === 'REPORT' ? 'Submit weekly metrics. Data is cached locally and synced state-wide.' : 'Real-time analytics across all active Digital Literacy Centers.'}
           </p>
         </div>
 
-        {view === 'REPORT' ? (
-          <ReportForm reports={reports} />
-        ) : (
-          <AdminDashboard reports={reports} />
-        )}
+        {view === 'REPORT' ? <ReportForm reports={reports} /> : <AdminDashboard reports={reports} />}
       </main>
 
       <footer className="bg-white border-t border-gray-200 py-8 mt-12">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-xs sm:text-sm text-gray-400 font-medium">&copy; 2026 DL4ALL Katsina State. Official Cloud-Synced Performance Portal.</p>
+          <p className="text-xs sm:text-sm text-gray-400 font-medium">&copy; 2026 DL4ALL Katsina State. Official Performance Tracking Portal.</p>
         </div>
       </footer>
     </div>

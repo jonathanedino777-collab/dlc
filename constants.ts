@@ -1,6 +1,6 @@
 import { LGA, Team } from './types';
 
-export const LGAS: LGA[] = ['BATAGARAWA', 'KATSINA', 'DAURA', 'MALUMFASHI', 'KANKIA'];
+export const LGAS: LGA[] = ['BATAGARAWA', 'KATSINA', 'DAURA', 'MALUMFASHI', 'KANKIA', 'MANI', 'MATAZU', 'MAIADUA'];
 
 export const INITIAL_TEAMS: Team[] = [
   // KATSINA LGA
@@ -32,6 +32,18 @@ export const INITIAL_TEAMS: Team[] = [
   // KANKIA LGA
   { id: '06101', lga: 'KANKIA', members: ['SHEHU MUSA', 'ZAINAB ALIYU'], color: '#f59e0b' },
   { id: '06102', lga: 'KANKIA', members: ['KABIRU ISAH', 'FATIMA AHMED'], color: '#d97706' },
+
+  // MANI LGA
+  { id: '07101', lga: 'MANI', members: ['ABDULLAHI MANI', 'HAFSAT BELLO'], color: '#6366f1' },
+  { id: '07105', lga: 'MANI', members: ['IBRAHIM LAWAL', 'KHADIJA SANI'], color: '#4f46e5' },
+
+  // MATAZU LGA
+  { id: '08101', lga: 'MATAZU', members: ['SANI MATAZU', 'YUSUF ADAMU'], color: '#ec4899' },
+  { id: '08104', lga: 'MATAZU', members: ['BASHIR ALIYU', 'FATIMA USMAN'], color: '#be185d' },
+
+  // MAI'ADUA LGA
+  { id: '09101', lga: 'MAIADUA', members: ['IBRAHIM MAIADUA', 'MUSA BELLO'], color: '#14b8a6' },
+  { id: '09106', lga: 'MAIADUA', members: ['SULEIMAN ADAMU', 'ZAINAB SANI'], color: '#0d9488' },
 ];
 
 export const MONTHS = [
