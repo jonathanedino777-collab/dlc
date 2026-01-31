@@ -22,7 +22,6 @@ const firebaseConfig = {
   measurementId: "G-PCTDFZYEK5"
 };
 
-// Singleton pattern with error boundary for initialization
 let app;
 let db: Firestore | null = null;
 
@@ -34,6 +33,13 @@ try {
 }
 
 const REPORTS_COLLECTION = 'reports';
+
+const isPermissionError = (err: any) => {
+  if (!err) return false;
+  const msg = err.message?.toLowerCase() || '';
+  const code = err.code?.toLowerCase() || '';
+  return code === 'permission-denied' || msg.includes('permission') || msg.includes('insufficient');
+};
 
 export const firestoreService = {
   saveReport: async (report: Omit<WeeklyReport, 'id' | 'submittedAt'>) => {
@@ -47,8 +53,7 @@ export const firestoreService = {
       return docRef.id;
     } catch (e: any) {
       console.error("Firestore Write Failed:", e.message);
-      // Propagate permission error specifically
-      if (e.code === 'permission-denied' || e.message?.toLowerCase().includes('permission')) {
+      if (isPermissionError(e)) {
         throw new Error('PERMISSION_DENIED');
       }
       throw e;
@@ -61,27 +66,27 @@ export const firestoreService = {
       return () => {};
     }
 
-    try {
-      const q = query(collection(db, REPORTS_COLLECTION), orderBy('submittedAt', 'desc'));
-      
-      return onSnapshot(q, {
-        next: (querySnapshot) => {
-          const reports: WeeklyReport[] = [];
-          querySnapshot.forEach((doc) => {
-            reports.push({ id: doc.id, ...doc.data() } as WeeklyReport);
-          });
-          callback(reports);
-        },
-        error: (error) => {
-          console.error("Firestore Subscription Error:", error.message);
-          if (errorCallback) errorCallback(error);
+    const q = query(collection(db, REPORTS_COLLECTION), orderBy('submittedAt', 'desc'));
+    
+    return onSnapshot(q, {
+      next: (querySnapshot) => {
+        const reports: WeeklyReport[] = [];
+        querySnapshot.forEach((doc) => {
+          reports.push({ id: doc.id, ...doc.data() } as WeeklyReport);
+        });
+        callback(reports);
+      },
+      error: (error) => {
+        console.error("Firestore Subscription Error:", error.message);
+        if (errorCallback) {
+          if (isPermissionError(error)) {
+            errorCallback(new Error('PERMISSION_DENIED'));
+          } else {
+            errorCallback(error);
+          }
         }
-      });
-    } catch (e) {
-      console.error("Subscription Setup Failed:", e);
-      if (errorCallback) errorCallback(e);
-      return () => {};
-    }
+      }
+    });
   },
 
   deleteReport: async (id: string) => {

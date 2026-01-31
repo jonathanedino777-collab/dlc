@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { INITIAL_TEAMS, LGAS } from '../constants';
-import { firestoreService } from '../services/firebase';
 import { LGA, WeeklyReport } from '../types';
 
 interface AdminDashboardProps {
@@ -15,10 +14,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ reports, error, 
   const [filterLga, setFilterLga] = useState<LGA | 'ALL'>('ALL');
   const [copied, setCopied] = useState(false);
   
-  const isPermissionError = useMemo(() => {
-    const errMsg = error?.message?.toLowerCase() || '';
-    return errMsg.includes('permission') || errMsg.includes('insufficient');
-  }, [error]);
+  const isPermissionError = error?.message === 'PERMISSION_DENIED';
 
   const stats = useMemo(() => {
     const total = reports.length;
@@ -53,7 +49,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ reports, error, 
   }, [reports, filterLga]);
 
   const handleCopyRules = () => {
-    const rulesText = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
+    const rulesText = `rules_version = '2';\n\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
     navigator.clipboard.writeText(rulesText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -83,57 +79,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ reports, error, 
               <div className="flex-1 space-y-6">
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-rose-500/10 border border-rose-500/20 rounded-full">
                   <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(244,63,94,0.8)]"></span>
-                  <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Permission Denied</span>
+                  <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Action Required</span>
                 </div>
                 
                 <h3 className="text-3xl font-black text-white tracking-tight leading-tight">
-                  Restore Database Access
+                  Restore Global Sync
                 </h3>
                 
                 <p className="text-slate-300 text-sm leading-relaxed max-w-lg">
-                  The system is currently <span className="text-rose-400 font-bold">LOCKED</span> due to Firebase security rules. Users cannot submit data and it will not display on the dashboard until you apply the fix below.
+                  Cloud synchronization is <span className="text-rose-400 font-bold">BLOCKED</span>. Copy the rules on the right and paste them into your Firebase Console to allow centers to report.
                 </p>
 
                 <div className="flex flex-wrap gap-4 pt-4">
                   <a 
-                    href="https://console.firebase.google.com/" 
+                    href="https://console.firebase.google.com/project/dlcs-b8f53/firestore/rules" 
                     target="_blank" 
                     rel="noreferrer" 
                     className="px-8 py-4 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-rose-600/20 active:scale-95"
                   >
-                    Open Firebase Console
+                    Open Console
                   </a>
                   <button 
                     onClick={() => window.location.reload()} 
                     className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-xs font-black uppercase tracking-widest border border-slate-700 transition-all active:scale-95"
                   >
-                    Refresh Connection
+                    Check Access
                   </button>
                 </div>
               </div>
 
               <div className="w-full md:w-auto flex-shrink-0 bg-black/60 rounded-3xl p-8 border border-white/5 font-mono shadow-inner group">
                 <div className="flex justify-between items-center mb-6">
-                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Paste into 'Rules' tab</p>
+                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Firestore Rules</p>
                    <button 
                     onClick={handleCopyRules}
                     className="text-[10px] font-black uppercase text-indigo-400 hover:text-white px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/20 transition-all active:scale-95"
                    >
-                     {copied ? 'Copied!' : 'Copy Fix'}
+                     {copied ? 'Copied!' : 'Copy Rules'}
                    </button>
                 </div>
                 <div className="text-[11px] leading-relaxed space-y-1 text-slate-400 pr-4">
                   <p><span className="text-indigo-400">rules_version</span> = '2';</p>
                   <p><span className="text-indigo-400">service</span> cloud.firestore {'{'}</p>
                   <p className="ml-4">match /databases/{'{'}database{'}'}/documents {'{'}</p>
-                  <p className="ml-8">match /reports/{'{'}document=**{'}'} {'{'}</p>
+                  <p className="ml-8">match /{'{'}document=**{'}'} {'{'}</p>
                   <p className="ml-12 text-emerald-400 font-bold">allow read, write: if true;</p>
                   <p className="ml-8">{'}'}</p>
                   <p className="ml-4">{'}'}</p>
                   <p>{'}'}</p>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-6 border-t border-white/5 pt-4 italic">
-                  * Note: Enabling 'if true' allows public access for testing.
+                  * Public access is now enabled for testing.
                 </p>
               </div>
             </div>
