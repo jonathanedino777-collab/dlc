@@ -1,30 +1,29 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ReportForm } from './components/ReportForm';
 import { AdminDashboard } from './components/AdminDashboard';
-import { storageService } from './services/storageService';
+import { firestoreService } from './services/firebase';
 import { WeeklyReport } from './types';
 
 const App: React.FC = () => {
   const [view, setView] = useState<'REPORT' | 'ADMIN'>('REPORT');
   const [reports, setReports] = useState<WeeklyReport[]>([]);
-
-  // Initialize and sync data
-  const refreshData = useCallback(() => {
-    const data = storageService.getReports();
-    setReports(data);
-  }, []);
+  const [cloudStatus, setCloudStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
 
   useEffect(() => {
-    refreshData();
-    // Listen for storage changes from other tabs
-    window.addEventListener('storage', refreshData);
-    return () => window.removeEventListener('storage', refreshData);
-  }, [refreshData]);
+    // Subscribe to real-time updates from Firestore
+    const unsubscribe = firestoreService.subscribeToReports(
+      (updatedReports) => {
+        setReports(updatedReports);
+        setCloudStatus('CONNECTED');
+      },
+      (error) => {
+        console.error("Firestore subscription error:", error);
+        setCloudStatus('ERROR');
+      }
+    );
 
-  const handleReportAdded = () => {
-    refreshData();
-  };
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -38,7 +37,13 @@ const App: React.FC = () => {
               </svg>
             </div>
             <div>
-              <h1 className="text-xl font-extrabold text-gray-900 tracking-tight leading-none">DL4ALL</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-extrabold text-gray-900 tracking-tight leading-none">DL4ALL</h1>
+                <span className={`flex h-2 w-2 rounded-full shadow-lg ${
+                  cloudStatus === 'CONNECTED' ? 'bg-green-500 shadow-green-500/50' : 
+                  cloudStatus === 'ERROR' ? 'bg-red-500 shadow-red-500/50' : 'bg-gray-300'
+                }`} title={cloudStatus}></span>
+              </div>
               <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">KATSINA STATE DLCs</p>
             </div>
           </div>
@@ -64,6 +69,13 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {/* Connection Error Banner */}
+      {cloudStatus === 'ERROR' && (
+        <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 text-center tracking-widest">
+          Cloud sync blocked by Firestore rules. Update rules in Firebase Console.
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
         <div className="mb-8 text-center">
@@ -72,22 +84,21 @@ const App: React.FC = () => {
           </h2>
           <p className="text-sm sm:text-base text-gray-500 max-w-2xl mx-auto px-4">
             {view === 'REPORT' 
-              ? 'Submit your weekly progress report for Batagarawa, Katsina, Daura, Malumfashi, or Kankia.'
-              : 'Monitor DLC performance metrics and team leaderboard across the state.'}
+              ? 'Submit your weekly progress report. All submissions are synced globally in real-time.'
+              : 'Monitor DLC performance metrics and team leaderboard synced across the state.'}
           </p>
         </div>
 
         {view === 'REPORT' ? (
-          <ReportForm onReportSubmitted={handleReportAdded} reports={reports} />
+          <ReportForm reports={reports} />
         ) : (
-          <AdminDashboard reports={reports} onDataChanged={refreshData} />
+          <AdminDashboard reports={reports} />
         )}
       </main>
 
-      {/* Footer */}
       <footer className="bg-white border-t border-gray-200 py-8 mt-12">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-xs sm:text-sm text-gray-400 font-medium">&copy; 2026 DL4ALL Katsina State. Official Performance Tracking Portal.</p>
+          <p className="text-xs sm:text-sm text-gray-400 font-medium">&copy; 2026 DL4ALL Katsina State. Official Cloud-Synced Performance Portal.</p>
         </div>
       </footer>
     </div>

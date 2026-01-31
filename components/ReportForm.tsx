@@ -1,15 +1,13 @@
-
 import React, { useState, useMemo } from 'react';
 import { LGAS, INITIAL_TEAMS, MONTHS } from '../constants';
 import { LGA, WeeklyReport } from '../types';
-import { storageService } from '../services/storageService';
+import { firestoreService } from '../services/firebase';
 
 interface ReportFormProps {
-  onReportSubmitted: () => void;
   reports: WeeklyReport[];
 }
 
-export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, reports }) => {
+export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
   const [lga, setLga] = useState<LGA | ''>('');
   const [teamId, setTeamId] = useState('');
   const [month, setMonth] = useState('Jan-26');
@@ -18,49 +16,42 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, repor
   const [status, setStatus] = useState<'P' | 'ABS' | 'NDB'>('P');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const filteredTeams = INITIAL_TEAMS.filter(t => t.lga === lga);
 
   const myRecentReports = useMemo(() => {
     return reports
       .filter(r => r.teamId === teamId)
-      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
       .slice(0, 3);
   }, [reports, teamId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lga || !teamId) return;
 
     setIsSubmitting(true);
+    setErrorMsg(null);
 
-    // Fallback UUID generation if crypto.randomUUID is not available
-    const generateId = () => {
-      try {
-        return crypto.randomUUID();
-      } catch (e) {
-        return Math.random().toString(36).substring(2) + Date.now().toString(36);
-      }
-    };
-
-    const newReport: WeeklyReport = {
-      id: generateId(),
+    const reportData = {
       teamId,
       month,
       week,
       score: status === 'P' ? score : 0,
       status,
-      submittedAt: new Date().toISOString()
     };
 
-    setTimeout(() => {
-      storageService.saveReport(newReport);
-      onReportSubmitted();
+    try {
+      await firestoreService.saveReport(reportData);
       setIsSubmitting(false);
       setSubmitted(true);
       setScore(0);
       setTimeout(() => setSubmitted(false), 5000);
-    }, 600);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Cloud sync failed. Check internet or database rules.");
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -77,8 +68,20 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, repor
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
             </div>
             <div className="flex-1">
-              <p className="font-bold text-sm">Report Saved Successfully!</p>
-              <p className="text-xs opacity-80">The data is now reflected in the master records.</p>
+              <p className="font-bold text-sm">Report Synced Successfully!</p>
+              <p className="text-xs opacity-80">Visible to state administrators immediately.</p>
+            </div>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl flex items-center gap-3 animate-slideDown border border-red-100">
+            <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-white flex-shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-sm">Sync Failure</p>
+              <p className="text-[10px] leading-tight opacity-90">{errorMsg}</p>
             </div>
           </div>
         )}
@@ -179,7 +182,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, repor
             }`}
           >
             {isSubmitting ? (
-              <span className="animate-pulse">PROCESSING...</span>
+              <span className="animate-pulse">SYNCING...</span>
             ) : (
               <>
                 SUBMIT WEEKLY REPORT
@@ -194,7 +197,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, repor
         <div className="p-6 bg-gray-900 rounded-3xl shadow-2xl text-white">
           <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-400 mb-4 flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
-            My Recent Submissions
+            Recent Submissions
           </h3>
           <div className="space-y-3">
             {myRecentReports.map(r => (
