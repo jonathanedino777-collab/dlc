@@ -1,26 +1,50 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LGAS, INITIAL_TEAMS, MONTHS } from '../constants';
 import { LGA, WeeklyReport } from '../types';
 import { storageService } from '../services/storageService';
 
-export const ReportForm: React.FC = () => {
+interface ReportFormProps {
+  onReportSubmitted: () => void;
+  reports: WeeklyReport[];
+}
+
+export const ReportForm: React.FC<ReportFormProps> = ({ onReportSubmitted, reports }) => {
   const [lga, setLga] = useState<LGA | ''>('');
   const [teamId, setTeamId] = useState('');
   const [month, setMonth] = useState('Jan-26');
   const [week, setWeek] = useState(1);
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState<'P' | 'ABS' | 'NDB'>('P');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const filteredTeams = INITIAL_TEAMS.filter(t => t.lga === lga);
+
+  const myRecentReports = useMemo(() => {
+    return reports
+      .filter(r => r.teamId === teamId)
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+      .slice(0, 3);
+  }, [reports, teamId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!lga || !teamId) return;
 
+    setIsSubmitting(true);
+
+    // Fallback UUID generation if crypto.randomUUID is not available
+    const generateId = () => {
+      try {
+        return crypto.randomUUID();
+      } catch (e) {
+        return Math.random().toString(36).substring(2) + Date.now().toString(36);
+      }
+    };
+
     const newReport: WeeklyReport = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       teamId,
       month,
       week,
@@ -29,116 +53,165 @@ export const ReportForm: React.FC = () => {
       submittedAt: new Date().toISOString()
     };
 
-    storageService.saveReport(newReport);
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+    setTimeout(() => {
+      storageService.saveReport(newReport);
+      onReportSubmitted();
+      setIsSubmitting(false);
+      setSubmitted(true);
+      setScore(0);
+      setTimeout(() => setSubmitted(false), 5000);
+    }, 600);
   };
 
   return (
-    <div className="max-w-xl mx-auto p-6 bg-white rounded-2xl shadow-sm border border-gray-100">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Weekly Report Submission</h2>
-      
-      {submitted && (
-        <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-lg flex items-center gap-2 animate-bounce">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
-          Report submitted successfully!
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Select LGA</label>
-          <select 
-            value={lga} 
-            onChange={(e) => { setLga(e.target.value as LGA); setTeamId(''); }}
-            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-            required
-          >
-            <option value="">-- Choose LGA --</option>
-            {LGAS.map(l => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </div>
-
-        {lga && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Select Team</label>
-            <select 
-              value={teamId} 
-              onChange={(e) => setTeamId(e.target.value)}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-              required
-            >
-              <option value="">-- Choose Team --</option>
-              {filteredTeams.map(t => (
-                <option key={t.id} value={t.id}>{t.id} - {t.members.join(' & ')}</option>
-              ))}
-            </select>
+    <div className="max-w-xl mx-auto space-y-8">
+      <div className="p-6 sm:p-8 bg-white rounded-3xl shadow-xl border border-gray-100 transition-all">
+        <h2 className="text-2xl font-black mb-6 text-gray-800 flex items-center gap-2">
+          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Weekly Submission
+        </h2>
+        
+        {submitted && (
+          <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-2xl flex items-center gap-3 animate-fadeIn border border-green-100">
+            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-sm">Report Saved Successfully!</p>
+              <p className="text-xs opacity-80">The data is now reflected in the master records.</p>
+            </div>
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Target LGA</label>
             <select 
-              value={month} 
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none"
+              value={lga} 
+              onChange={(e) => { setLga(e.target.value as LGA); setTeamId(''); }}
+              className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-semibold text-gray-700 shadow-sm"
+              required
             >
-              {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+              <option value="">-- Choose LGA --</option>
+              {LGAS.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Week</label>
-            <select 
-              value={week} 
-              onChange={(e) => setWeek(Number(e.target.value))}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none"
-            >
-              {[1, 2, 3, 4].map(w => <option key={w} value={w}>Week {w}</option>)}
-            </select>
-          </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <div className="flex gap-4">
-            {['P', 'ABS', 'NDB'].map((s) => (
-              <label key={s} className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="status" 
-                  value={s} 
-                  checked={status === s} 
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-4 h-4 text-blue-600"
-                />
-                <span className="text-sm text-gray-600">{s === 'P' ? 'Present (Score)' : s}</span>
-              </label>
+          {lga && (
+            <div className="animate-slideDown">
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Team Selection</label>
+              <select 
+                value={teamId} 
+                onChange={(e) => setTeamId(e.target.value)}
+                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-semibold text-gray-700 shadow-sm"
+                required
+              >
+                <option value="">-- Choose Team --</option>
+                {filteredTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.id} - {t.members.join(' & ')}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Period Month</label>
+              <select 
+                value={month} 
+                onChange={(e) => setMonth(e.target.value)}
+                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-semibold text-gray-700 shadow-sm"
+              >
+                {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Reporting Week</label>
+              <select 
+                value={week} 
+                onChange={(e) => setWeek(Number(e.target.value))}
+                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-semibold text-gray-700 shadow-sm"
+              >
+                {[1, 2, 3, 4].map(w => <option key={w} value={w}>Week {w}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 text-center">Attendance Status</label>
+            <div className="flex gap-2 bg-gray-100 p-1.5 rounded-2xl">
+              {['P', 'ABS', 'NDB'].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s as any)}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${
+                    status === s 
+                    ? 'bg-white text-blue-600 shadow-md transform scale-105' 
+                    : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {s === 'P' ? 'PRESENT' : s === 'ABS' ? 'ABSENT' : 'NO DATA'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {status === 'P' && (
+            <div className="animate-slideDown">
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Weekly Performance Score</label>
+              <input 
+                type="number" 
+                value={score}
+                onChange={(e) => setScore(Number(e.target.value))}
+                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-black text-2xl text-center text-blue-600 shadow-inner"
+                min="0"
+                required
+              />
+            </div>
+          )}
+
+          <button 
+            type="submit"
+            disabled={isSubmitting}
+            className={`w-full py-5 rounded-2xl shadow-xl font-black transition-all transform active:scale-95 flex items-center justify-center gap-3 ${
+              isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1'
+            }`}
+          >
+            {isSubmitting ? (
+              <span className="animate-pulse">PROCESSING...</span>
+            ) : (
+              <>
+                SUBMIT WEEKLY REPORT
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
+      {teamId && myRecentReports.length > 0 && (
+        <div className="p-6 bg-gray-900 rounded-3xl shadow-2xl text-white">
+          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-400 mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+            My Recent Submissions
+          </h3>
+          <div className="space-y-3">
+            {myRecentReports.map(r => (
+              <div key={r.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10">
+                <div>
+                  <div className="text-xs font-bold">{r.month} - Week {r.week}</div>
+                  <div className="text-[10px] text-gray-400">{new Date(r.submittedAt).toLocaleDateString()}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-black text-blue-300">+{r.score}</div>
+                  <div className={`text-[10px] font-bold ${r.status === 'P' ? 'text-green-400' : 'text-red-400'}`}>{r.status}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
-
-        {status === 'P' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Score / Performance Value</label>
-            <input 
-              type="number" 
-              value={score}
-              onChange={(e) => setScore(Number(e.target.value))}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-              min="0"
-              required
-            />
-          </div>
-        )}
-
-        <button 
-          type="submit"
-          className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transform hover:-translate-y-0.5 transition-all active:scale-95 mt-6"
-        >
-          Send Weekly Report
-        </button>
-      </form>
+      )}
     </div>
   );
 };
