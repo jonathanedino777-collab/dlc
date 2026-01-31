@@ -1,5 +1,13 @@
 export type LGA = 'BATAGARAWA' | 'KATSINA' | 'DAURA' | 'MALUMFASHI' | 'KANKIA' | 'MANI' | 'MATAZU' | 'MAIADUA';
 
+export type UserRole = 'ADMIN' | 'FIELD_OFFICER';
+
+export interface AuthUser {
+  role: UserRole;
+  name: string;
+  lga?: LGA;
+}
+
 export interface TeamMember {
   name: string;
 }

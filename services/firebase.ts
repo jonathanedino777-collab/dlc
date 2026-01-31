@@ -1,5 +1,15 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  deleteDoc, 
+  doc,
+  Firestore
+} from "firebase/firestore";
 import { WeeklyReport } from "../types";
 
 const firebaseConfig = {
@@ -12,14 +22,23 @@ const firebaseConfig = {
   measurementId: "G-PCTDFZYEK5"
 };
 
-// Singleton pattern for Firebase initialization
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const db = getFirestore(app);
+// Singleton pattern with error boundary for initialization
+let app;
+let db: Firestore | null = null;
+
+try {
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  db = getFirestore(app);
+} catch (error) {
+  console.error("Firebase Initialization Critical Error:", error);
+}
 
 const REPORTS_COLLECTION = 'reports';
 
 export const firestoreService = {
   saveReport: async (report: Omit<WeeklyReport, 'id' | 'submittedAt'>) => {
+    if (!db) throw new Error("Database Service Offline");
+    
     try {
       const docRef = await addDoc(collection(db, REPORTS_COLLECTION), {
         ...report,
@@ -27,46 +46,50 @@ export const firestoreService = {
       });
       return docRef.id;
     } catch (e: any) {
-      console.error("Firestore write error: ", e);
-      if (e.code === 'permission-denied') {
-        throw new Error('Database is locked. Please contact admin to update Firestore security rules.');
+      console.error("Firestore Write Failed:", e.message);
+      // Propagate permission error specifically
+      if (e.code === 'permission-denied' || e.message?.toLowerCase().includes('permission')) {
+        throw new Error('PERMISSION_DENIED');
       }
       throw e;
     }
   },
 
   subscribeToReports: (callback: (reports: WeeklyReport[]) => void, errorCallback?: (error: any) => void) => {
+    if (!db) {
+      if (errorCallback) errorCallback(new Error("DB_NOT_INIT"));
+      return () => {};
+    }
+
     try {
       const q = query(collection(db, REPORTS_COLLECTION), orderBy('submittedAt', 'desc'));
-      return onSnapshot(
-        q, 
-        (querySnapshot) => {
+      
+      return onSnapshot(q, {
+        next: (querySnapshot) => {
           const reports: WeeklyReport[] = [];
           querySnapshot.forEach((doc) => {
             reports.push({ id: doc.id, ...doc.data() } as WeeklyReport);
           });
           callback(reports);
         },
-        (error) => {
+        error: (error) => {
+          console.error("Firestore Subscription Error:", error.message);
           if (errorCallback) errorCallback(error);
         }
-      );
+      });
     } catch (e) {
-      console.error("Subscription setup failed:", e);
+      console.error("Subscription Setup Failed:", e);
       if (errorCallback) errorCallback(e);
-      return () => {}; // Return dummy unsubscribe
+      return () => {};
     }
   },
 
   deleteReport: async (id: string) => {
+    if (!db) return;
     try {
       await deleteDoc(doc(db, REPORTS_COLLECTION, id));
-    } catch (e: any) {
-      console.error("Firestore delete error: ", e);
-      if (e.code === 'permission-denied') {
-        throw new Error('Deletion failed. Database permissions required.');
-      }
-      throw e;
+    } catch (e) {
+      console.error("Delete failed:", e);
     }
   }
 };

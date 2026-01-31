@@ -16,8 +16,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState<'P' | 'ABS' | 'NDB'>('P');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submissionResult, setSubmissionResult] = useState<{type: 'SUCCESS' | 'LOCAL' | 'ERROR', msg: string} | null>(null);
 
   const filteredTeams = INITIAL_TEAMS.filter(t => t.lga === lga);
 
@@ -32,7 +31,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
     if (!lga || !teamId) return;
 
     setIsSubmitting(true);
-    setErrorMsg(null);
+    setSubmissionResult(null);
 
     const reportData = {
       teamId,
@@ -43,13 +42,9 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
     };
 
     try {
-      // 1. Attempt Cloud Save
       await firestoreService.saveReport(reportData);
-      setSubmitted(true);
+      setSubmissionResult({ type: 'SUCCESS', msg: 'Report successfully synced to State Headquarters.' });
     } catch (err: any) {
-      console.error("Cloud Submission Failed:", err);
-      
-      // 2. Fallback: Save Locally if cloud fails
       const localReport: WeeklyReport = {
         ...reportData,
         id: `local_${Date.now()}`,
@@ -57,101 +52,126 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
       };
       storageService.saveReport(localReport);
       
-      setErrorMsg("Sync Pending: Your report is saved locally on this device.");
-      setSubmitted(true); // Still show success UI but with the warning
+      const isPermission = err.message?.includes('PERMISSION_DENIED');
+      setSubmissionResult({ 
+        type: isPermission ? 'ERROR' : 'LOCAL', 
+        msg: isPermission 
+          ? 'Permission denied. Please ask the Administrator to update Firestore Security Rules.' 
+          : 'Saved on device. Auto-sync will resume when connectivity is restored.' 
+      });
     } finally {
       setIsSubmitting(false);
       setScore(0);
-      setTimeout(() => setSubmitted(false), 5000);
+      setTimeout(() => setSubmissionResult(null), 6000);
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto space-y-8">
-      <div className="p-6 sm:p-8 bg-white rounded-3xl shadow-xl border border-gray-100 transition-all">
-        <h2 className="text-2xl font-black mb-6 text-gray-800 flex items-center gap-2">
-          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Weekly Submission
+    <div className="max-w-2xl mx-auto space-y-10 pb-20">
+      <div className="bg-white rounded-[2.5rem] p-8 sm:p-12 shadow-2xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+        {/* Progress Background */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-slate-50">
+           <div className={`h-full bg-indigo-600 transition-all duration-500 ${lga ? 'w-1/3' : 'w-0'} ${teamId ? 'w-2/3' : ''} ${submissionResult ? 'w-full' : ''}`} />
+        </div>
+
+        <h2 className="text-2xl font-black mb-10 text-slate-900 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"/></svg>
+          </div>
+          New Performance Entry
         </h2>
         
-        {submitted && (
-          <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn border ${errorMsg ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-green-50 text-green-700 border-green-100'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 ${errorMsg ? 'bg-orange-500' : 'bg-green-500'}`}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
+        {submissionResult && (
+          <div className={`mb-10 p-6 rounded-3xl flex items-center gap-5 animate-slideDown border ${
+            submissionResult.type === 'ERROR' ? 'bg-rose-50 text-rose-800 border-rose-100' :
+            submissionResult.type === 'LOCAL' ? 'bg-amber-50 text-amber-800 border-amber-100' : 
+            'bg-emerald-50 text-emerald-800 border-emerald-100'
+          }`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white flex-shrink-0 shadow-lg ${
+              submissionResult.type === 'ERROR' ? 'bg-rose-500 shadow-rose-200' :
+              submissionResult.type === 'LOCAL' ? 'bg-amber-500 shadow-amber-200' : 
+              'bg-emerald-500 shadow-emerald-200'
+            }`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"/></svg>
             </div>
-            <div className="flex-1">
-              <p className="font-bold text-sm">{errorMsg ? 'Saved Locally' : 'Report Synced Successfully!'}</p>
-              <p className="text-[10px] opacity-80 leading-tight">{errorMsg || 'Visible to state administrators immediately.'}</p>
+            <div>
+              <p className="font-black text-sm uppercase tracking-tight">
+                {submissionResult.type === 'ERROR' ? 'Permission Error' :
+                 submissionResult.type === 'LOCAL' ? 'Pending Synchronization' : 
+                 'Mission Successful'}
+              </p>
+              <p className="text-xs font-medium opacity-70 mt-1">{submissionResult.msg}</p>
             </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Target LGA</label>
-            <select 
-              value={lga} 
-              onChange={(e) => { setLga(e.target.value as LGA); setTeamId(''); }}
-              className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-semibold text-gray-700 shadow-sm"
-              required
-            >
-              <option value="">-- Choose LGA --</option>
-              {LGAS.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-
-          {lga && (
-            <div className="animate-slideDown">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Team Selection</label>
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="grid sm:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Local Gov Area</label>
               <select 
-                value={teamId} 
-                onChange={(e) => setTeamId(e.target.value)}
-                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-semibold text-gray-700 shadow-sm"
+                value={lga} 
+                onChange={(e) => { setLga(e.target.value as LGA); setTeamId(''); }}
+                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-600 focus:bg-white rounded-[1.5rem] transition-all outline-none font-bold text-slate-700 shadow-sm"
                 required
               >
-                <option value="">-- Choose Team --</option>
+                <option value="">Select LGA</option>
+                {LGAS.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Team Selection</label>
+              <select 
+                value={teamId} 
+                disabled={!lga}
+                onChange={(e) => setTeamId(e.target.value)}
+                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-600 focus:bg-white rounded-[1.5rem] transition-all outline-none font-bold text-slate-700 shadow-sm disabled:opacity-40"
+                required
+              >
+                <option value="">{lga ? 'Choose Team' : 'Select LGA First'}</option>
                 {filteredTeams.map(t => (
-                  <option key={t.id} value={t.id}>{t.id} - {t.members.join(' & ')}</option>
+                  <option key={t.id} value={t.id}>{t.id} — {t.members[0]}</option>
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Period Month</label>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Reporting Period</label>
               <select 
                 value={month} 
                 onChange={(e) => setMonth(e.target.value)}
-                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-semibold text-gray-700 shadow-sm"
+                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-600 focus:bg-white rounded-[1.5rem] font-bold text-slate-700 shadow-sm outline-none"
               >
                 {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Reporting Week</label>
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Week</label>
               <select 
                 value={week} 
                 onChange={(e) => setWeek(Number(e.target.value))}
-                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none font-semibold text-gray-700 shadow-sm"
+                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-600 focus:bg-white rounded-[1.5rem] font-bold text-slate-700 shadow-sm outline-none"
               >
                 {[1, 2, 3, 4].map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 text-center">Attendance Status</label>
-            <div className="flex gap-2 bg-gray-100 p-1.5 rounded-2xl">
+          <div className="space-y-4">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Center Attendance</label>
+            <div className="flex gap-3 bg-slate-100/80 p-2 rounded-[1.5rem]">
               {['P', 'ABS', 'NDB'].map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setStatus(s as any)}
-                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${
+                  className={`flex-1 py-4 rounded-xl text-[10px] font-black tracking-widest transition-all ${
                     status === s 
-                    ? 'bg-white text-blue-600 shadow-md transform scale-105' 
-                    : 'text-gray-400 hover:text-gray-600'
+                    ? 'bg-white text-indigo-600 shadow-md transform scale-[1.02]' 
+                    : 'text-slate-400 hover:text-slate-600'
                   }`}
                 >
                   {s === 'P' ? 'PRESENT' : s === 'ABS' ? 'ABSENT' : 'NO DATA'}
@@ -161,13 +181,13 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
           </div>
 
           {status === 'P' && (
-            <div className="animate-slideDown">
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Weekly Performance Score</label>
+            <div className="space-y-3 animate-slideDown">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Weekly Merit Score</label>
               <input 
                 type="number" 
                 value={score}
                 onChange={(e) => setScore(Number(e.target.value))}
-                className="w-full p-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none font-black text-2xl text-center text-blue-600 shadow-inner"
+                className="w-full p-6 bg-slate-50 border-2 border-transparent focus:border-indigo-600 focus:bg-white rounded-[2rem] transition-all outline-none font-black text-4xl text-center text-indigo-600 shadow-inner"
                 min="0"
                 required
               />
@@ -177,16 +197,16 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
           <button 
             type="submit"
             disabled={isSubmitting}
-            className={`w-full py-5 rounded-2xl shadow-xl font-black transition-all transform active:scale-95 flex items-center justify-center gap-3 ${
-              isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1'
+            className={`w-full py-6 rounded-[2rem] shadow-2xl shadow-indigo-600/20 font-black transition-all transform active:scale-[0.98] flex items-center justify-center gap-4 text-sm tracking-[0.1em] ${
+              isSubmitting ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500'
             }`}
           >
             {isSubmitting ? (
-              <span className="animate-pulse">SYNCING...</span>
+              <span className="animate-pulse">COMMITTING DATA...</span>
             ) : (
               <>
-                SUBMIT WEEKLY REPORT
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                SUBMIT PERFORMANCE REPORT
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M13 5l7 7m0 0l-7 7m7-7H3"/></svg>
               </>
             )}
           </button>
@@ -194,21 +214,24 @@ export const ReportForm: React.FC<ReportFormProps> = ({ reports }) => {
       </div>
 
       {teamId && myRecentReports.length > 0 && (
-        <div className="p-6 bg-gray-900 rounded-3xl shadow-2xl text-white">
-          <h3 className="text-xs font-black uppercase tracking-[0.2em] text-blue-400 mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
-            My Device History
+        <div className="p-10 bg-slate-900 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden group">
+           <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity">
+              <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+           </div>
+           <h3 className="text-xs font-black uppercase tracking-[0.25em] text-indigo-400 mb-8 flex items-center gap-3">
+            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
+            Submission History
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {myRecentReports.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10">
+              <div key={r.id} className="flex items-center justify-between p-5 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
                 <div>
-                  <div className="text-xs font-bold">{r.month} - Week {r.week}</div>
-                  <div className="text-[10px] text-gray-400">{new Date(r.submittedAt).toLocaleDateString()}</div>
+                  <div className="text-xs font-black text-slate-100">{r.month} • Week {r.week}</div>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase mt-1">Processed: {new Date(r.submittedAt).toLocaleDateString()}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-black text-blue-300">+{r.score}</div>
-                  <div className={`text-[10px] font-bold ${r.status === 'P' ? 'text-green-400' : 'text-red-400'}`}>{r.status}</div>
+                  <div className="text-xl font-black text-indigo-400">+{r.score}</div>
+                  <div className={`text-[9px] font-black uppercase tracking-widest ${r.status === 'P' ? 'text-emerald-400' : 'text-rose-400'}`}>{r.status === 'P' ? 'Active' : 'Missing'}</div>
                 </div>
               </div>
             ))}
